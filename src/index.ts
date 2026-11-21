@@ -16,6 +16,8 @@ import type { ExpansionResult, SnippetDirectories, SnippetLogger } from "./types
 
 const LOG_PREFIX = "[inline-snippets]";
 const MAX_SUGGESTIONS = 20;
+const MAX_PREVIEW_CHARACTERS = 80;
+const FALLBACK_DESCRIPTION = "Markdown snippet";
 
 export interface InlineSnippetsOptions {
   globalDir?: string;
@@ -72,12 +74,38 @@ function extractSnippetToken(line: string, cursorCol: number): string | undefine
   return match?.[1];
 }
 
+function snippetPreview(content: string): string | undefined {
+  const firstLine = content.split(/\r?\n/).find((line) => line.trim().length > 0);
+  if (!firstLine) {
+    return undefined;
+  }
+
+  const normalized = firstLine
+    .trim()
+    .replace(/^(?:#{1,6}|>|[-*+]|\d{1,9}[.)])\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  const characters = Array.from(normalized);
+  if (characters.length <= MAX_PREVIEW_CHARACTERS) {
+    return normalized;
+  }
+
+  return `${characters.slice(0, MAX_PREVIEW_CHARACTERS - 1).join("").trimEnd()}…`;
+}
+
 function createSnippetAutocompleteProvider(
   current: AutocompleteProvider,
   resolver: SnippetResolver,
 ): AutocompleteProvider {
   let cachedNames: string[] | undefined;
   let cacheExpiresAt = 0;
+  const previewCache = new Map<string, string | undefined>();
+  let previewCacheExpiresAt = 0;
 
   const getNames = async (): Promise<string[]> => {
     const now = Date.now();
@@ -87,6 +115,22 @@ function createSnippetAutocompleteProvider(
     cachedNames = await resolver.list();
     cacheExpiresAt = now + 1_000;
     return cachedNames;
+  };
+
+  const getPreview = async (name: string): Promise<string | undefined> => {
+    const now = Date.now();
+    if (now >= previewCacheExpiresAt) {
+      previewCache.clear();
+      previewCacheExpiresAt = now + 1_000;
+    }
+    if (previewCache.has(name)) {
+      return previewCache.get(name);
+    }
+
+    const content = await resolver.resolve(name);
+    const preview = content === undefined ? undefined : snippetPreview(content);
+    previewCache.set(name, preview);
+    return preview;
   };
 
   return {
@@ -109,14 +153,20 @@ function createSnippetAutocompleteProvider(
       }
 
       const query = token.toLowerCase();
-      const items: AutocompleteItem[] = names
+      const matchedNames = names
         .filter((name) => name.toLowerCase().includes(query))
-        .slice(0, MAX_SUGGESTIONS)
-        .map((name) => ({
+        .slice(0, MAX_SUGGESTIONS);
+      const items: AutocompleteItem[] = await Promise.all(
+        matchedNames.map(async (name) => ({
           value: `#${name}`,
           label: `#${name}`,
-          description: "Markdown snippet",
-        }));
+          description: (await getPreview(name)) ?? FALLBACK_DESCRIPTION,
+        })),
+      );
+
+      if (options.signal.aborted) {
+        return null;
+      }
 
       if (items.length === 0) {
         return current.getSuggestions(lines, cursorLine, cursorCol, options);

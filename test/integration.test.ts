@@ -155,9 +155,9 @@ describe("autocomplete", () => {
     root = await mkdtemp(path.join(tmpdir(), "pi-inline-snippets-auto-"));
     const projectDir = path.join(root, ".pi", "snippets");
     await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(projectDir, "dotnet.md"), "");
+    await writeFile(path.join(projectDir, "dotnet.md"), "# .NET Guidelines\n\nUse async APIs.");
     await writeFile(path.join(projectDir, "testing.md"), "");
-    await writeFile(path.join(projectDir, "strict.md"), "");
+    await writeFile(path.join(projectDir, "strict.md"), "Strict rules for this project.");
   });
 
   afterEach(async () => {
@@ -178,7 +178,7 @@ describe("autocomplete", () => {
     };
   }
 
-  it("suggests snippet names after #", async () => {
+  it("suggests snippet names with a file preview after #", async () => {
     const { pi, sessionStart } = fakePi();
     inlineSnippetsExtension(pi);
     let provider: AutocompleteProvider | undefined;
@@ -201,9 +201,37 @@ describe("autocomplete", () => {
 
     expect(suggestions).toEqual({
       items: [
-        { value: "#dotnet", label: "#dotnet", description: "Markdown snippet" },
+        { value: "#dotnet", label: "#dotnet", description: ".NET Guidelines" },
       ],
       prefix: "#d",
+    });
+  });
+
+  it("falls back to a generic description for empty snippets", async () => {
+    const { pi, sessionStart } = fakePi();
+    inlineSnippetsExtension(pi);
+    let provider: AutocompleteProvider | undefined;
+    sessionStart()(
+      {},
+      {
+        cwd: root,
+        ui: {
+          addAutocompleteProvider(factory) {
+            provider = factory(currentProvider());
+          },
+        },
+      },
+    );
+
+    const suggestions = await provider!.getSuggestions(["#te"], 0, 3, {
+      signal: new AbortController().signal,
+    });
+
+    expect(suggestions).toEqual({
+      items: [
+        { value: "#testing", label: "#testing", description: "Markdown snippet" },
+      ],
+      prefix: "#te",
     });
   });
 

@@ -175,7 +175,7 @@ If a project snippet file exists but cannot be read, that failure is reported an
 
 ## Autocomplete
 
-In the interactive TUI, typing `#` offers snippet names from both directories. Project snippets override global snippets with the same name, and suggestions are filtered as you type.
+In the interactive TUI, typing `#` offers snippet names from both directories. Project snippets override global snippets with the same name, and suggestions are filtered as you type. Each suggestion shows a one-line preview taken from the first non-empty line of the snippet; empty snippets fall back to `Markdown snippet`.
 
 Autocomplete is optional. It is registered through `ctx.ui.addAutocompleteProvider()` during `session_start`, and it delegates to the normal file autocomplete when the cursor is not in a snippet reference. RPC clients and Paseo do not need autocomplete; the input substitution path has no UI dependency.
 
